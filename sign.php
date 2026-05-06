@@ -1,80 +1,85 @@
 <?php
-/**
- * sign.php
- * Fungsi: Membuat tanda tangan digital (signature) dari teks
- * menggunakan Private Key dan algoritma SHA-256
- */
-
 header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
 
-// Hanya menerima request POST
+// Validasi input
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['success' => false, 'message' => 'Hanya menerima request POST.']);
+    echo json_encode(['success' => false, 'error' => 'Method tidak diizinkan.']);
     exit;
 }
 
-// Ambil input teks dari request
-$text = isset($_POST['text']) ? trim($_POST['text']) : '';
+$message = isset($_POST['message']) ? trim($_POST['message']) : '';
 
-if (empty($text)) {
-    echo json_encode(['success' => false, 'message' => 'Teks tidak boleh kosong.']);
+if (empty($message)) {
+    echo json_encode(['success' => false, 'error' => 'Pesan tidak boleh kosong.']);
     exit;
 }
 
-// Path ke private key
+// Path private key
 $privateKeyPath = __DIR__ . '/keys/private_key.pem';
 
 if (!file_exists($privateKeyPath)) {
     echo json_encode([
         'success' => false,
-        'message' => 'Private key tidak ditemukan. Silakan generate key terlebih dahulu.',
+        'error'   => 'Private key tidak ditemukan. Generate key terlebih dahulu.'
     ]);
     exit;
 }
 
-try {
-    // 1. Baca isi file private key
-    $privateKeyPem = file_get_contents($privateKeyPath);
+// Baca private key
+$privateKeyPem = file_get_contents($privateKeyPath);
 
-    if ($privateKeyPem === false) {
-        throw new Exception("Gagal membaca file private key.");
-    }
-
-    // 2. Load private key dari string PEM
-    $privateKey = openssl_pkey_get_private($privateKeyPem);
-
-    if (!$privateKey) {
-        throw new Exception("Gagal memuat private key: " . openssl_error_string());
-    }
-
-    // 3. Buat signature menggunakan openssl_sign dengan SHA-256
-    //    $signature akan berisi binary signature
-    $signature = "";
-    $signSuccess = openssl_sign($text, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-
-    if (!$signSuccess) {
-        throw new Exception("Gagal membuat signature: " . openssl_error_string());
-    }
-
-    // 4. Encode signature ke Base64 agar bisa ditampilkan sebagai teks
-    $signatureBase64 = base64_encode($signature);
-
-    // 5. Bebaskan resource key
-    openssl_free_key($privateKey);
-
-    // Kirim respons sukses
-    echo json_encode([
-        'success'          => true,
-        'message'          => 'Signature berhasil dibuat!',
-        'original_text'    => $text,
-        'signature_base64' => $signatureBase64,
-        'algorithm'        => 'RSA-SHA256',
-        'timestamp'        => date('d-m-Y H:i:s'),
-    ]);
-
-} catch (Exception $e) {
+if ($privateKeyPem === false || empty($privateKeyPem)) {
     echo json_encode([
         'success' => false,
-        'message' => $e->getMessage(),
+        'error'   => 'Gagal membaca private key.'
     ]);
+    exit;
 }
+
+// Load private key resource
+$privateKey = openssl_pkey_get_private($privateKeyPem);
+
+if ($privateKey === false) {
+    $errors = [];
+    while ($msg = openssl_error_string()) {
+        $errors[] = $msg;
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Private key tidak valid: ' . implode('; ', $errors)
+    ]);
+    exit;
+}
+
+// Buat signature dengan SHA-256
+$signature = '';
+$result = openssl_sign($message, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+
+if (!$result) {
+    $errors = [];
+    while ($msg = openssl_error_string()) {
+        $errors[] = $msg;
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Gagal membuat signature: ' . implode('; ', $errors)
+    ]);
+    exit;
+}
+
+// Free resource
+if (is_resource($privateKey)) {
+    openssl_free_key($privateKey);
+}
+
+// Encode ke Base64
+$signatureBase64 = base64_encode($signature);
+
+echo json_encode([
+    'success'         => true,
+    'signature'       => $signatureBase64,
+    'message'         => $message,
+    'algorithm'       => 'RSA-SHA256',
+    'signature_length'=> strlen($signatureBase64),
+]);

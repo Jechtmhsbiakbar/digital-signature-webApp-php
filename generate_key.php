@@ -1,76 +1,93 @@
 <?php
-/**
- * generate_key.php
- * Fungsi: Generate pasangan kunci RSA (Private Key & Public Key) 2048-bit
- * dan simpan ke folder keys/
- */
-
 header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
 
-// Pastikan folder keys/ ada dan bisa ditulis
-$keysDir = __DIR__ . '/keys/';
+$keysDir = __DIR__ . '/keys';
+
+// Buat folder keys jika belum ada
 if (!is_dir($keysDir)) {
-    mkdir($keysDir, 0755, true);
+    if (!mkdir($keysDir, 0755, true)) {
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Gagal membuat folder keys/. Pastikan permission direktori mencukupi.'
+        ]);
+        exit;
+    }
 }
 
-try {
-    // Konfigurasi untuk generate key RSA 2048-bit dengan SHA-256
-    $config = [
-        "digest_alg"       => "sha256",
-        "private_key_bits" => 2048,
-        "private_key_type" => OPENSSL_KEYTYPE_RSA,
-    ];
+// Konfigurasi key RSA 2048-bit
+$config = [
+    'digest_alg'       => 'sha256',
+    'private_key_bits' => 2048,
+    'private_key_type' => OPENSSL_KEYTYPE_RSA,
+];
 
-    // 1. Generate pasangan kunci baru
-    $keyPair = openssl_pkey_new($config);
+// Generate key pair
+$keyResource = openssl_pkey_new($config);
 
-    if (!$keyPair) {
-        throw new Exception("Gagal generate key pair: " . openssl_error_string());
+if ($keyResource === false) {
+    $errors = [];
+    while ($msg = openssl_error_string()) {
+        $errors[] = $msg;
     }
-
-    // 2. Ekstrak Private Key ke string PEM
-    $privateKeyPem = "";
-    $exportSuccess = openssl_pkey_export($keyPair, $privateKeyPem);
-
-    if (!$exportSuccess) {
-        throw new Exception("Gagal mengekspor private key: " . openssl_error_string());
-    }
-
-    // 3. Ekstrak Public Key dari key pair
-    $keyDetails   = openssl_pkey_get_details($keyPair);
-    $publicKeyPem = $keyDetails['key'];
-
-    if (empty($publicKeyPem)) {
-        throw new Exception("Gagal mendapatkan public key.");
-    }
-
-    // 4. Simpan ke file
-    $privateKeyPath = $keysDir . 'private_key.pem';
-    $publicKeyPath  = $keysDir . 'public_key.pem';
-
-    if (file_put_contents($privateKeyPath, $privateKeyPem) === false) {
-        throw new Exception("Gagal menyimpan private key ke file.");
-    }
-
-    if (file_put_contents($publicKeyPath, $publicKeyPem) === false) {
-        throw new Exception("Gagal menyimpan public key ke file.");
-    }
-
-    // 5. Bebaskan resource key dari memori
-    openssl_free_key($keyPair);
-
-    // Kirim respons sukses
-    echo json_encode([
-        'success'     => true,
-        'message'     => 'Pasangan kunci RSA 2048-bit berhasil digenerate!',
-        'private_key' => $privateKeyPem,
-        'public_key'  => $publicKeyPem,
-        'timestamp'   => date('d-m-Y H:i:s'),
-    ]);
-
-} catch (Exception $e) {
     echo json_encode([
         'success' => false,
-        'message' => $e->getMessage(),
+        'error'   => 'Gagal generate key: ' . implode('; ', $errors)
     ]);
+    exit;
 }
+
+// Export private key
+$privateKeyPem = '';
+$exported = openssl_pkey_export($keyResource, $privateKeyPem);
+
+if (!$exported || empty($privateKeyPem)) {
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Gagal export private key.'
+    ]);
+    exit;
+}
+
+// Ambil public key
+$keyDetails = openssl_pkey_get_details($keyResource);
+
+if ($keyDetails === false || !isset($keyDetails['key'])) {
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Gagal mendapatkan detail public key.'
+    ]);
+    exit;
+}
+
+$publicKeyPem = $keyDetails['key'];
+
+// Simpan ke file
+$privateKeyPath = $keysDir . '/private_key.pem';
+$publicKeyPath  = $keysDir . '/public_key.pem';
+
+$savedPrivate = file_put_contents($privateKeyPath, $privateKeyPem);
+$savedPublic  = file_put_contents($publicKeyPath,  $publicKeyPem);
+
+if ($savedPrivate === false || $savedPublic === false) {
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Gagal menyimpan key ke file. Periksa permission folder keys/.'
+    ]);
+    exit;
+}
+
+// Free resource (PHP 8+ otomatis, tapi tetap good practice)
+if (is_resource($keyResource)) {
+    openssl_pkey_free($keyResource);
+}
+
+echo json_encode([
+    'success'    => true,
+    'public_key' => $publicKeyPem,
+    'message'    => 'Key pair RSA-2048 berhasil dibuat dan disimpan.',
+    'paths'      => [
+        'private' => 'keys/private_key.pem',
+        'public'  => 'keys/public_key.pem',
+    ]
+]);
