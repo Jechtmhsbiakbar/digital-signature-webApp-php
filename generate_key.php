@@ -2,8 +2,9 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-$keysDir = __DIR__ . '/keys';
+// putenv("OPENSSL_CONF=C:\\xampp\\php\\extras\\ssl\\openssl.cnf");
 
+$keysDir = __DIR__ . '/keys';
 // Buat folder keys jika belum ada
 if (!is_dir($keysDir)) {
     if (!mkdir($keysDir, 0755, true)) {
@@ -17,11 +18,11 @@ if (!is_dir($keysDir)) {
 
 // Konfigurasi key RSA 2048-bit
 $config = [
+    // 'config'           => 'C:\\xampp\\php\\extras\\ssl\\openssl.cnf',
     'digest_alg'       => 'sha256',
     'private_key_bits' => 2048,
     'private_key_type' => OPENSSL_KEYTYPE_RSA,
 ];
-
 // Generate key pair
 $keyResource = openssl_pkey_new($config);
 
@@ -39,13 +40,27 @@ if ($keyResource === false) {
 
 // Export private key
 $privateKeyPem = '';
-$exported = openssl_pkey_export($keyResource, $privateKeyPem);
+
+$exported = openssl_pkey_export(
+    $keyResource,
+    $privateKeyPem,
+    null,
+    $config
+);
 
 if (!$exported || empty($privateKeyPem)) {
+
+    $errors = [];
+
+    while ($msg = openssl_error_string()) {
+        $errors[] = $msg;
+    }
+
     echo json_encode([
         'success' => false,
-        'error'   => 'Gagal export private key.'
+        'error'   => 'Gagal export private key: ' . implode('; ', $errors)
     ]);
+
     exit;
 }
 
