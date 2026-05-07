@@ -2,7 +2,8 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-// putenv("OPENSSL_CONF=C:\\xampp\\php\\extras\\ssl\\openssl.cnf");
+// Set environment variable untuk OpenSSL (khusus di Windows dengan XAMPP)
+putenv("OPENSSL_CONF=C:\\xampp\\php\\extras\\ssl\\openssl.cnf");
 
 $keysDir = __DIR__ . '/keys';
 // Buat folder keys jika belum ada
@@ -18,7 +19,7 @@ if (!is_dir($keysDir)) {
 
 // Konfigurasi key RSA 2048-bit
 $config = [
-    // 'config'           => 'C:\\xampp\\php\\extras\\ssl\\openssl.cnf',
+    'config'           => 'C:\\xampp\\php\\extras\\ssl\\openssl.cnf', // Path ke openssl.cnf di XAMPP
     'digest_alg'       => 'sha256',
     'private_key_bits' => 2048,
     'private_key_type' => OPENSSL_KEYTYPE_RSA,
